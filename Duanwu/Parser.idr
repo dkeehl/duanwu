@@ -37,6 +37,7 @@ parseNil = do string "Nil"
               pure LispNil
 
 mutual
+  export
   parseExpr : Parser LispVal
   parseExpr = parseNumber
            <|> parseNegNum
@@ -70,8 +71,9 @@ mutual
                    e <- parseExpr
                    pure $ LispList [LispAtom "quote", e]
 
-readExpr : String -> String
+export
+readExpr : String -> LispVal
 readExpr input = case parse parseExpr input of
-                      Left err => "Not match: " ++ err
-                      Right expr => show expr
+                      Left err => LispStr $ "No match: " ++ err
+                      Right val => val
 
