@@ -72,8 +72,8 @@ mutual
                    pure $ LispList [LispAtom "quote", e]
 
 export
-readExpr : String -> LispVal
+readExpr : String -> Either LispError LispVal
 readExpr input = case parse parseExpr input of
-                      Left err => LispStr $ "No match: " ++ err
-                      Right val => val
+                      Left err => Left $ Parser err
+                      Right val => Right val
 
