@@ -1,6 +1,6 @@
 module Duanwu.Parser
 
-import LispVal
+import Duanwu.LispVal
 import Lightyear
 import Lightyear.Char
 import Lightyear.Strings

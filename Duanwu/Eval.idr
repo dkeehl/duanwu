@@ -1,7 +1,7 @@
 module Duanwu.Eval
 
-import LispVal
-import Parser
+import Duanwu.LispVal
+import Duanwu.Parser
 --import Control.Catchable
 
 mapM : Monad m => (a -> m b) -> List a -> m (List b)
