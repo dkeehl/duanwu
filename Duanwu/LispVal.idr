@@ -11,9 +11,6 @@ data LispVal = LispAtom String
              | LispList (List LispVal)
              | LispDotted (List LispVal) LispVal
 
-public export
-EnvCtx : Type
-EnvCtx = List (String, LispVal)
 
 Show LispVal where
   show (LispAtom atom) = atom
