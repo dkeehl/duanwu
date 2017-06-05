@@ -3,7 +3,6 @@ module Duanwu.Eval
 import Duanwu.LispVal
 import Data.SortedMap
 import Control.ST
-import Control.ST.Exception
 
 mapM : Monad m => (a -> m b) -> List a -> m (List b)
 mapM _ [] = pure []
@@ -110,52 +109,103 @@ primitives = [("+", numericBinop (+)),
               ("string<=?", boolBinop $ (<=) {ty = String}),
               ("string>=?", boolBinop $ (>=) {ty = String})]
 
-apply : String -> List LispVal -> Either LispError LispVal
-apply fname args
-    = case lookup fname primitives of
-           Nothing =>
-             Left $ NotFunction "Unrecognized primitive function args" fname
-           Just f => f args
+pureL : e -> STrans m (Either e a) res (const res)
+pureL = pure . Left
 
-mapST : (a -> STrans m b st (const st)) -> List a ->
-        STrans m (List b) st (const st)
-mapST f [] = pure []
-mapST f (x :: xs) = do x' <- f x
-                       xs' <- mapST f xs
-                       pure (x' :: xs')
+pureR : a -> STrans m (Either e a) res (const res)
+pureR = pure . Right
 
+mapST : (a -> STrans m (Either e b) st (const st)) -> List a ->
+        STrans m (Either e (List b)) st (const st)
+mapST f [] = pureR []
+mapST f (x :: xs) = do Right x' <- f x
+                        | Left err => pureL err
+                       Right xs' <- mapST f xs
+                        | Left err => pureL err
+                       pureR (x' :: xs')
+
+{-
+export
 liftEither : Exception m e => Either e a -> STrans m a res (const res)
 liftEither (Left err) = throw err
 liftEither (Right val) = pure val
-
-public export
-EnvCtx : Type
-EnvCtx = SortedMap String LispVal
+-}
 
 updateVar : (env : Var) -> (k : String) -> (v : LispVal) ->
-            ST m LispVal [env ::: State EnvCtx]
-updateVar env k v = update env (insert k v) >>= pure v
+            ST m () [env ::: State EnvCtx]
+updateVar env k v = update env (insert k v)
 
+bindVars : (old : EnvCtx) -> (varList : List (String, LispVal)) -> EnvCtx
+bindVars = foldl (\env, (k, v) => insert k v env)
+
+public export
+Eval : (m : Type -> Type) -> (a : Type) ->
+       List (Action $ Either LispError a) -> Type
+Eval m a = ST m (Either LispError a)
+
+mutual
+  export
+  eval : (env : Var) -> LispVal -> Eval m LispVal [env ::: State EnvCtx]
+  eval env val@(LispStr _) = pureR val
+  eval env val@(LispNum _) = pureR val
+  eval env val@(LispBool _) = pureR val
+  eval env LispNil = pureR LispNil
+  eval env (LispList [LispAtom "quote", val]) = pureR val
+  eval env (LispList [LispAtom "if", pred, conseq, alt])
+    = do Right (LispBool False) <- eval env pred
+          | Right _ => eval env conseq
+          | Left err => pureL err
+         eval env alt
+  eval env (LispList [LispAtom "define", LispAtom var, form])
+    = do Right val <- eval env form
+          | Left err => pureL err
+         updateVar env var val
+         pureR val
+  eval env (LispList [LispAtom "set!", LispAtom var, form])
+    = do e <- read env 
+         case lookup var e of
+              Nothing => pure $
+                        Left (UnboundVar "Setting an unbound variable" var)
+              Just _ => do Right val <- eval env form
+                            | Left err => pureL err
+                           updateVar env var val
+                           pureR val
+  eval env (LispList (func :: args))
+    = do Right fn <- eval env func
+          | Left err => pureL err
+         Right args' <- mapST (eval env) args
+          | Left err => pureL err
+         apply env fn args' 
+
+  eval env val = pureL $ Default ("unmatched case " ++ show val)
+
+  localEval : (local : EnvCtx) -> List LispVal ->
+              Eval m (List LispVal) []
+  localEval local es = do env <- new local
+                          val <- mapST (eval env) es
+                          delete env
+                          pure val
+                 
+  apply : (env : Var) -> LispVal -> List LispVal ->
+          Eval m LispVal [env ::: State EnvCtx]
+  apply env (Function fn) args = pure (fn args)
+  apply env (Lambda params vararg body closure) args
+    = if length params /= length args && vararg == Nothing
+         then pureL $ NumArgs (cast $ length params) args
+         else do Right (x :: xs) <- call $ localEval local body
+                  | Right [] => pureL (Default "empty body")
+                  | Left err => pureL err
+                 pureR $ last (x :: xs)
+    where local : EnvCtx
+
+  apply env expr _ = eval env expr
+
+
+{-
 export
-eval : Exception m LispError => (env : Var) -> LispVal ->
-       ST m LispVal [env ::: State EnvCtx]
-eval env val@(LispStr _) = pure val
-eval env val@(LispNum _) = pure val
-eval env val@(LispBool _) = pure val
-eval env LispNil = pure LispNil
-eval env (LispList [LispAtom "quote", val]) = pure val
-eval env (LispList [LispAtom "if", pred, conseq, alt])
-  = do LispBool False <- eval env pred | _ => eval env conseq
-       eval env alt
-eval env (LispList [LispAtom "define", LispAtom var, form])
-  = updateVar env var !(eval env form)
-eval env (LispList [LispAtom "set!", LispAtom var, form])
-  = do e <- read env 
-       case lookup var e of
-            Nothing => throw (UnboundVar "Setting an unbound variable" var)
-            Just _ => updateVar env var !(eval env form)
-eval env (LispList (LispAtom fn :: args))
-  = do args' <- mapST (eval env) args
-       liftEither (apply fn args') 
-
-eval env val = throw $ Default ("unmatched case " ++ show val)
+eval1 : Exception m LispError => LispVal -> ST m LispVal []
+eval1 expr = do env <- new empty
+                val <- eval env expr
+                delete env
+                pure val
+-}
