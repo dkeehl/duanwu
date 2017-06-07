@@ -109,9 +109,11 @@ primitives = [("+", numericBinop (+)),
               ("string<=?", boolBinop $ (<=) {ty = String}),
               ("string>=?", boolBinop $ (>=) {ty = String})]
 
+export
 pureL : e -> STrans m (Either e a) res (const res)
 pureL = pure . Left
 
+export
 pureR : a -> STrans m (Either e a) res (const res)
 pureR = pure . Right
 
@@ -143,6 +145,22 @@ Eval : (m : Type -> Type) -> (a : Type) ->
        List (Action $ Either LispError a) -> Type
 Eval m a = ST m (Either LispError a)
 
+mkFunc : (varargs : Maybe String) -> (env : Var) ->
+         (params : List LispVal) -> (body : List LispVal) ->
+         Eval m LispVal [env ::: State EnvCtx]
+mkFunc varargs env params body
+  = do closure <- read env
+       -- need to check all params are atoms?
+       pureR $ Lambda (map show params) varargs body closure
+
+mkNormFunc : (env : Var) -> (params : List LispVal) ->
+             (body : List LispVal) -> Eval m LispVal [env ::: State EnvCtx]
+mkNormFunc = mkFunc Nothing
+
+mkVarArgs : (arg : String) -> (env : Var) -> (params : List LispVal) ->
+            (body : List LispVal) -> Eval m LispVal [env ::: State EnvCtx]
+mkVarArgs = mkFunc . Just 
+
 mutual
   export
   eval : (env : Var) -> LispVal -> Eval m LispVal [env ::: State EnvCtx]
@@ -151,6 +169,10 @@ mutual
   eval env val@(LispBool _) = pureR val
   eval env LispNil = pureR LispNil
   eval env (LispList [LispAtom "quote", val]) = pureR val
+  eval env (LispAtom id)
+    = case lookup id !(read env) of
+           Nothing => pureL $ UnboundVar "Unbound variable" id
+           Just val => pureR val
   eval env (LispList [LispAtom "if", pred, conseq, alt])
     = do Right (LispBool False) <- eval env pred
           | Right _ => eval env conseq
@@ -170,6 +192,30 @@ mutual
                             | Left err => pureL err
                            updateVar env var val
                            pureR val
+  eval env
+    (LispList (LispAtom "define"
+              ::  LispList (LispAtom var :: params)
+              ::  body))
+    = do Right fn <- mkNormFunc env params body
+          | Left err => pureL err
+         updateVar env var fn
+         pureR $ LispAtom var
+  eval env
+    (LispList (LispAtom "define"
+              :: LispDotted (LispAtom var :: params) (LispAtom vararg)
+              :: body))
+    = do Right fn <- mkVarArgs vararg env params body
+          | Left err => pureL err
+         updateVar env var fn
+         pureR $ LispAtom var
+  eval env (LispList (LispAtom "lambda" :: LispList params :: body))
+    = mkNormFunc env params body
+  eval env (LispList (LispAtom "lambda"
+                      :: LispDotted params (LispAtom vararg)
+                      :: body))
+    = mkVarArgs vararg env params body
+  eval env (LispList (LispAtom "lambda" :: LispAtom vararg :: body))
+    = mkVarArgs vararg env [] body
   eval env (LispList (func :: args))
     = do Right fn <- eval env func
           | Left err => pureL err
@@ -196,16 +242,19 @@ mutual
                   | Right [] => pureL (Default "empty body")
                   | Left err => pureL err
                  pureR $ last (x :: xs)
-    where local : EnvCtx
+    where optArg : List (String, LispVal)
+          optArg 
+            = let remaining = drop (length params) args in 
+                  case vararg of
+                       Nothing  => []
+                       Just arg => [(arg, LispList remaining)]
+          local : EnvCtx
+          local = bindVars closure $ zip params args ++ optArg
 
   apply env expr _ = eval env expr
 
-
-{-
 export
-eval1 : Exception m LispError => LispVal -> ST m LispVal []
-eval1 expr = do env <- new empty
-                val <- eval env expr
-                delete env
-                pure val
--}
+primitiveBindings : EnvCtx
+primitiveBindings
+  = let mkPrimFunctions = \(var, func) => (var, Function func) in
+        bindVars empty $ map mkPrimFunctions primitives
