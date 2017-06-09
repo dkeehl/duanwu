@@ -1,6 +1,6 @@
 module Duanwu.LispVal
 
-import Data.SortedMap
+import Data.IORef
 
 %access public export
 
@@ -23,11 +23,11 @@ mutual
        Parser : (err : String) -> LispError
        BadSpecialForm : (msg : String) -> (form : LispVal) -> LispError
        NotFunction : (fname : String) -> LispError
-       UnboundVar : (msg : String) -> (varname : String) -> LispError
+       UnboundVar : (varname : String) -> LispError
        Default : String -> LispError
 
   EnvCtx : Type
-  EnvCtx = SortedMap String LispVal
+  EnvCtx = IORef (List (String, IORef LispVal))
 
 private
 unwordsList : Show a => List a -> String
@@ -59,7 +59,7 @@ Show LispError where
                                        expected ++ ", found " ++ show found
   show (Parser err) = "Parser error at " ++ err
   show (BadSpecialForm msg form) = msg ++ ": " ++ show form
-  show (NotFunction fname) = fname ++ "is not a function"
-  show (UnboundVar msg varname) = msg ++ ": " ++ varname
+  show (NotFunction fname) = fname ++ " is not a function"
+  show (UnboundVar varname) = varname ++ " is not bounded"
   show (Default msg) = msg
 
