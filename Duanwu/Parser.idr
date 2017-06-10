@@ -33,7 +33,7 @@ parseAtom = do first <- letter <|> symbol
                            _    => LispAtom atom
 
 parseNil : Parser LispVal
-parseNil = do string "Nil"
+parseNil = do string "nil"
               pure LispNil
 
 mutual
@@ -71,9 +71,16 @@ mutual
                    e <- parseExpr
                    pure $ LispList [LispAtom "quote", e]
 
+readAndParse : Parser a -> String -> Either LispError a
+readAndParse parser input = case parse parser input of
+                                 Left err => Left $ Parser err
+                                 Right val => Right val
+
 export
 readExpr : String -> Either LispError LispVal
-readExpr input = case parse parseExpr input of
-                      Left err => Left $ Parser err
-                      Right val => Right val
+readExpr = readAndParse parseExpr
+
+export
+readExprList : String -> Either LispError (List LispVal)
+readExprList = readAndParse (sepBy parseExpr spaces)
 

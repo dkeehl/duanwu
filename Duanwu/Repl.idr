@@ -3,6 +3,7 @@ module Duanwu.Repl
 import Duanwu.LispVal
 import Duanwu.Parser
 import Duanwu.Eval
+import Duanwu.Prim
 import Data.IORef
 import Duanwu.Helper
 import Control.Monad.Trans
@@ -10,11 +11,14 @@ import Control.Monad.Trans
 parseAndEval : EnvCtx -> String -> Eval LispVal
 parseAndEval env input = liftEither (readExpr input) >>= eval env 
 
-eval1 : String -> Eval LispVal
-eval1 input = lift primitiveBindings >>= flip parseAndEval input
-
-evalAndPrint : String -> IO ()
-evalAndPrint = eitherT printLn printLn . eval1
+evalAndPrint : List String -> IO ()
+evalAndPrint [] = pure ()
+evalAndPrint (filename :: args)
+  = do env <- primitiveBindings
+       let args' = LispList $ map LispStr args 
+       env' <- bindVars env [("args", args')]
+       let expr = LispList [LispAtom "load", LispStr filename]
+       eitherT printLn printLn $ eval env' expr
 
 runRepl : IO ()
 runRepl = do putStrLn "Lisp Repl"
@@ -33,10 +37,9 @@ runRepl = do putStrLn "Lisp Repl"
 
 export
 main : IO ()
-main
-  = do args <- getArgs
-       case args of
-            [cmd] => runRepl 
-            [cmd, arg] => evalAndPrint arg
-            _ => putStrLn "Program takes only 0 or 1 argument"
+main = do args <- getArgs
+          case args of
+               [cmd] => runRepl 
+               (cmd :: args) => evalAndPrint args
+               [] => pure () -- impossible
 

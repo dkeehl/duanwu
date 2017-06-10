@@ -1,6 +1,7 @@
 module Duanwu.LispVal
 
 import Data.IORef
+import Duanwu.Helper
 
 %access public export
 
@@ -16,6 +17,9 @@ mutual
        Function : (fn : List LispVal -> Either LispError LispVal) -> LispVal
        Lambda : (params : List String) -> (vararg : Maybe String) ->
                 (body : List LispVal) -> (closure : EnvCtx) -> LispVal
+       IOFunc : (fn : List LispVal -> EitherT LispError IO LispVal) ->
+                LispVal
+       Port : File -> LispVal
 
   data LispError : Type where
        NumArgs : (expected : Integer) -> (found : List LispVal) -> LispError
@@ -50,6 +54,8 @@ Show LispVal where
         (case vararg of
               Nothing => ""
               Just arg => " . " ++ arg) ++ ") ...)"
+  show (IOFunc _) = "<IO primitive>"
+  show (Port _) = "<IO port>"
 
 export
 Show LispError where
