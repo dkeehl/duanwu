@@ -1,0 +1,7 @@
+package duanwu
+
+pkgs = lightyear, ioref
+
+executable = duanwu
+main = Main
+
