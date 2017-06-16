@@ -7,13 +7,6 @@ import Data.IORef
 import Control.Monad.Trans
 
 export
-mapM : Monad m => (a -> m b) -> List a -> m (List b)
-mapM _ [] = pure []
-mapM f (x :: xs) = do x' <- f x
-                      xs' <- mapM f xs
-                      pure $ x' :: xs'
-
-export
 load : String -> EitherT LispError IO (List LispVal)
 load filename = do Right str <- lift $ readFile filename
                     | Left err => left (Default $ show err)
@@ -55,7 +48,7 @@ export
 bindVars : (old : EnvCtx) -> (varList : List (String, LispVal)) ->
            IO EnvCtx 
 bindVars envRef varList = do env <- readIORef envRef
-                             let bindings = mapM addBinding varList
+                             let bindings = traverse addBinding varList
                              newIORef !(liftA (++ env) bindings)
   where addBinding : (String, LispVal) -> IO (String, IORef LispVal)
         addBinding (k, v) = do ref <- newIORef v
@@ -99,7 +92,7 @@ mutual
     = eval env form >>= setVar env var
   eval env (LispList [LispAtom "load", LispStr filename])
     = do xs <- load filename
-         (x :: ys) <- mapM (eval env) xs
+         (x :: ys) <- traverse (eval env) xs
           | [] => pure LispNil
          pure $ last (x :: ys)
   eval env
@@ -122,7 +115,7 @@ mutual
     = mkVarArgs vararg env [] body
   eval env (LispList (func :: args))
     = do fn <- eval env func
-         args' <- mapM (eval env) args
+         args' <- traverse (eval env) args
          apply fn args' 
 
   eval env val = left $ Default ("unmatched case " ++ show val)
@@ -146,7 +139,7 @@ mutual
           local : IO EnvCtx
           local = bindVars closure $ zip params args ++ optArg
           evalBody : EnvCtx -> List LispVal -> Eval (List LispVal)
-          evalBody env = mapM (eval env)
+          evalBody env = traverse (eval env)
 
   apply expr _ = left $ NotFunction (show expr)
 

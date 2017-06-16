@@ -33,7 +33,7 @@ Convert Bool where
 numericBinop : (Integer -> Integer -> Integer) ->
                List LispVal -> Either LispError LispVal
 numericBinop op [] = Left $ NumArgs 2 []
-numericBinop op params = do nums <- mapM conv params
+numericBinop op params = do nums <- traverse conv params
                             pure $ LispNum (foldl1 op nums)
 
 boolBinop : Convert a => (a -> a -> Bool) -> List LispVal ->
