@@ -7,13 +7,13 @@ import public Duanwu.Helper
 
 mutual
   data LispVal : Type where
-       LispAtom : String -> LispVal
-       LispNum : Integer -> LispVal
-       LispStr : String -> LispVal
-       LispBool : Bool -> LispVal
-       LispNil : LispVal
-       LispList : List LispVal -> LispVal
-       LispDotted : List LispVal -> LispVal -> LispVal
+       Atom : String -> LispVal
+       Num : Integer -> LispVal
+       Str : String -> LispVal
+       Bool : Bool -> LispVal
+       Nil : LispVal
+       List : List LispVal -> LispVal
+       Dotted : List LispVal -> LispVal -> LispVal
        Function : (fn : List LispVal -> Either LispError LispVal) -> LispVal
        Lambda : (params : List String) -> (vararg : Maybe String) ->
                 (body : List LispVal) -> (closure : EnvCtx) -> LispVal
@@ -39,14 +39,14 @@ unwordsList = unwords . map show
 
 export
 Show LispVal where
-  show (LispAtom atom) = atom
-  show (LispNum n) = show n
-  show (LispStr str) = "\"" ++ str ++ "\""
-  show (LispBool True) = "#t"
-  show (LispBool False) = "#f"
-  show LispNil = "Nil"
-  show (LispList contents) = "(" ++ unwordsList contents ++ ")"
-  show (LispDotted contents val)
+  show (Atom atom) = atom
+  show (Num n) = show n
+  show (Str str) = "\"" ++ str ++ "\""
+  show (Bool True) = "#t"
+  show (Bool False) = "#f"
+  show Nil = "Nil"
+  show (List contents) = "(" ++ unwordsList contents ++ ")"
+  show (Dotted contents val)
       = "(" ++ unwordsList contents ++ " . " ++ show val ++ ")"
   show (Function _) = "<primitive>"
   show (Lambda params vararg body closure)

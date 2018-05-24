@@ -12,9 +12,9 @@ evalAndPrint : List String -> IO ()
 evalAndPrint [] = pure ()
 evalAndPrint (filename :: args)
   = do env <- primitiveBindings
-       let args' = LispList $ map LispStr args 
+       let args' = List $ map Str args 
        env' <- bindVars env [("args", args')]
-       let expr = LispList [LispAtom "load", LispStr filename]
+       let expr = List [Atom "load", Str filename]
        eitherT printLn printLn $ eval env' expr
 
 runRepl : IO ()

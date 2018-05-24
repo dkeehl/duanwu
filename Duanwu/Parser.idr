@@ -10,31 +10,31 @@ symbol : Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 
 parseNumber : Parser LispVal
-parseNumber = map LispNum integer
+parseNumber = map Num integer
 
 parseNegNum : Parser LispVal
 parseNegNum = do char '-'
                  num <- integer
-                 pure $ LispNum (- num)
+                 pure $ Num (- num)
 
 parseString : Parser LispVal
 parseString = do char '"'
                  chars <- many (noneOf "\"")
                  char '"'
-                 pure $ LispStr (pack chars)
+                 pure $ Str (pack chars)
 
 parseAtom : Parser LispVal
 parseAtom = do first <- letter <|> symbol
                rest <- many (alphaNum <|> symbol)
                let atom = pack (first :: rest) 
                pure $ case atom of
-                           "#t" => LispBool True
-                           "#f" => LispBool False
-                           _    => LispAtom atom
+                           "#t" => Bool True
+                           "#f" => Bool False
+                           _    => Atom atom
 
 parseNil : Parser LispVal
 parseNil = do string "nil"
-              pure LispNil
+              pure Nil
 
 mutual
   export
@@ -54,7 +54,7 @@ mutual
                  e <- sepBy parseExpr spaces
                  spaces
                  char ')'
-                 pure $ LispList e
+                 pure $ List e
 
   parseDotted : Parser LispVal
   parseDotted = do char '('
@@ -64,12 +64,12 @@ mutual
                    spaces
                    tail <- parseExpr
                    char ')'
-                   pure $ LispDotted head tail
+                   pure $ Dotted head tail
 
   parseQuoted : Parser LispVal
   parseQuoted = do char '\''
                    e <- parseExpr
-                   pure $ LispList [LispAtom "quote", e]
+                   pure $ List [Atom "quote", e]
 
 readAndParse : Parser a -> String -> Either LispError a
 readAndParse parser input = case parse parser input of
