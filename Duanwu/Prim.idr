@@ -2,10 +2,7 @@ module Duanwu.Prim
 
 import Duanwu.LispVal
 import Duanwu.Parser
-import Duanwu.Helper
 import Duanwu.Eval
-import Data.IORef
-import Control.Monad.Trans
 
 -- Buildin functions
 interface Convert ty where

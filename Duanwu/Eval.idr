@@ -1,10 +1,7 @@
 module Duanwu.Eval
 
 import Duanwu.LispVal
-import Duanwu.Helper
 import Duanwu.Parser
-import Data.IORef
-import Control.Monad.Trans
 
 export
 load : String -> EitherT LispError IO (List LispVal)

@@ -4,9 +4,6 @@ import Duanwu.LispVal
 import Duanwu.Parser
 import Duanwu.Eval
 import Duanwu.Prim
-import Data.IORef
-import Duanwu.Helper
-import Control.Monad.Trans
 
 parseAndEval : EnvCtx -> String -> Eval LispVal
 parseAndEval env input = liftEither (readExpr input) >>= eval env 

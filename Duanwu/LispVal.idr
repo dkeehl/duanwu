@@ -1,7 +1,7 @@
 module Duanwu.LispVal
 
-import Data.IORef
-import Duanwu.Helper
+import public Data.IORef
+import public Duanwu.Helper
 
 %access public export
 

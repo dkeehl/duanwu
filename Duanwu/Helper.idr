@@ -1,6 +1,6 @@
 module Duanwu.Helper
 
-import Control.Monad.Trans
+import public Control.Monad.Trans
 
 %access export
 
