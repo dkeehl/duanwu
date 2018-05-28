@@ -2,9 +2,8 @@ module Duanwu.Prim
 
 import Duanwu.LispVal
 import Duanwu.Parser
-import Effects
-import Effect.Exception
-import Effect.FileIO
+import Control.ST
+import Control.ST.FileIO
 
 Result : Type -> Type
 Result = Either LispError
@@ -85,10 +84,10 @@ eqv badArgList = Left $ NumArgs 2 badArgList
 
 
 -- Primitive IO Functions
-IOResult : Type -> Type
-IOResult a = Eff (Either LispError a) [FILE_IO] 
+IOResult : (Type -> Type) -> Type -> Type
+IOResult m a = ST m (Either LispError a) [] 
 
-makePort : Mode -> List LispVal -> IOResult LispVal
+makePort : FileIO m => Mode -> List LispVal -> IOResult m LispVal
 makePort mode [Str filename]
   = do Right file <- openFile filename mode
         | Left e => err (Default $ "can't open file " ++ filename ++
@@ -97,12 +96,12 @@ makePort mode [Str filename]
 makePort _ [val] = err $ TypeMisMatch "string" val
 makePort _ expr = err $ NumArgs 1 expr
 
-closePort : List LispVal -> IOResult LispVal
+closePort : FileIO m => List LispVal -> IOResult m LispVal
 closePort [Port file] = do closeFile file
                            ok $ Bool True 
 closePort _ = ok $ Bool False
 
-readProc : List LispVal -> IOResult LispVal 
+readProc : FileIO m => List LispVal -> IOResult m LispVal 
 readProc [] = readProc [Port stdin]
 readProc [Port port] = do Right str <- fGetLine port
                             | Left e => err (Default (show e))
@@ -110,14 +109,14 @@ readProc [Port port] = do Right str <- fGetLine port
 readProc [val] = err $ TypeMisMatch "port" val
 readProc xs = err $ NumArgs 1 xs
 
-writeProc : List LispVal -> IOResult LispVal
+writeProc : FileIO m => List LispVal -> IOResult m LispVal
 writeProc [obj] = do r <- fPutStr stdout (show obj)
                      ok . Bool $ either (const False) (const True) r
 writeProc [obj, Port file] = do r <- fPutStr file (show obj)
                                 ok . Bool $ either (const False) (const True) r
 writeProc _ = err $ Default "write: Invalid arguments"
 
-readContents : List LispVal -> IOResult LispVal
+readContents : FileIO m => List LispVal -> IOResult m LispVal
 readContents [Str filename]
   = do Right str <- readFile filename
         | Left e => err (Default $ show e)
@@ -126,12 +125,12 @@ readContents [val] = err $ TypeMisMatch "string" val
 readContents xs = err $ NumArgs 1 xs
 
 export
-load : String -> Eff (Either LispError (List LispVal)) [FILE_IO]
+load : FileIO m => String -> ST m (Either LispError (List LispVal)) []
 load filename = do Right str <- readFile filename
                     | Left e => err (Default $ show e)
                    pure $ readExprList str
 
-readAll : List LispVal -> IOResult LispVal
+readAll : FileIO m => List LispVal -> IOResult m LispVal
 readAll [Str filename] = do l <- load filename; pure (map List l)
 readAll [val] = err $ TypeMisMatch "string" val
 readAll expr = err $ NumArgs 1 expr
@@ -175,49 +174,36 @@ primitives : List (String, LispVal)
 primitives = map (map Fun) primFuns
 
 export
-runPrim : PrimFun -> List LispVal ->
-          Eff (Either LispError LispVal) [EXCEPTION Panic, FILE_IO]
-runPrim Car args = pure $ car args  -- point free don't type check, a bug?
-runPrim Cdr args = pure $ cdr args
-runPrim Cons args = pure $ cons args
-runPrim Eqv args = pure $ eqv args
-runPrim Add args = pure $ numericBinop (+) args
-runPrim Sub args = pure $ numericBinop (-) args
-runPrim Mult args = pure $ numericBinop (*) args
-runPrim Div args = pure $ numericBinop div args
-runPrim Mod args = pure $ numericBinop mod args
-runPrim And args = pure $ boolBinop (\x, y => x && y) args
-runPrim Or args = pure $ boolBinop (\x, y => x || y) args
-runPrim EQ args = pure $ boolBinop {a = Integer} (==) args
-runPrim LT args = pure $ boolBinop {a = Integer} (<) args
-runPrim GT args = pure $ boolBinop {a = Integer} (>) args
-runPrim NE args = pure $ boolBinop {a = Integer} (/=) args
-runPrim LTE args = pure $ boolBinop {a = Integer} (<=) args
-runPrim GTE args = pure $ boolBinop {a = Integer} (>=) args
-runPrim StrEq args = pure $ boolBinop {a = String} (==) args
-runPrim StrLT args = pure $ boolBinop {a = String} (<) args
-runPrim StrGT args = pure $ boolBinop {a = String} (>) args
-runPrim StrLTE args = pure $ boolBinop {a = String} (<=) args
-runPrim StrGTE args = pure $ boolBinop {a = String} (>=) args
-runPrim OpenInputFile args = makePort Read args 
-runPrim OpenOutputFile args = makePort WriteTruncate args
-runPrim CloseInputFile args = closePort args
-runPrim CloseOutputFile args = closePort args
-runPrim Read args = readProc args
-runPrim Write args = writeProc args
-runPrim ReadContents args = readContents args
-runPrim ReadAll args = readAll args
-runPrim Apply _ = raise $ Unreachable "Apply: PrimFun should not run in runPrim"
-
-{-
-nullEnv : IO EnvCtx
-nullEnv = newIORef []
-
-export
-primitiveBindings : IO EnvCtx
-primitiveBindings
-  = let mkPrimFunctions = \(var, func) => (var, Function func)
-        mkList LispVal -> IOResult LispVals = \(var, func) => (var, IOFunc func) in
-        nullEnv >>= flip bindVars (map mkPrimFunctions primitives
-                                  ++ map mkList LispVal -> IOResult LispVals ioPrimitives)
--}
+runPrim : FileIO m =>
+          PrimFun -> List LispVal -> ST m (Either LispError LispVal) []
+runPrim Car  = pure . car 
+runPrim Cdr  = pure . cdr
+runPrim Cons = pure . cons 
+runPrim Eqv  = pure . eqv 
+runPrim Add  = pure . numericBinop (+) 
+runPrim Sub  = pure . numericBinop (-) 
+runPrim Mult = pure . numericBinop (*) 
+runPrim Div = pure . numericBinop div 
+runPrim Mod = pure . numericBinop mod 
+runPrim And = pure . boolBinop (\x, y => x && y) 
+runPrim Or  = pure . boolBinop (\x, y => x || y) 
+runPrim EQ  = pure . boolBinop {a = Integer} (==) 
+runPrim LT  = pure . boolBinop {a = Integer} (<) 
+runPrim GT  = pure . boolBinop {a = Integer} (>) 
+runPrim NE  = pure . boolBinop {a = Integer} (/=) 
+runPrim LTE = pure . boolBinop {a = Integer} (<=) 
+runPrim GTE = pure . boolBinop {a = Integer} (>=) 
+runPrim StrEq  = pure . boolBinop {a = String} (==) 
+runPrim StrLT  = pure . boolBinop {a = String} (<) 
+runPrim StrGT  = pure . boolBinop {a = String} (>) 
+runPrim StrLTE = pure . boolBinop {a = String} (<=) 
+runPrim StrGTE = pure . boolBinop {a = String} (>=) 
+runPrim OpenInputFile   = makePort Read  
+runPrim OpenOutputFile  = makePort WriteTruncate 
+runPrim CloseInputFile  = closePort 
+runPrim CloseOutputFile = closePort 
+runPrim Read  = readProc 
+runPrim Write = writeProc 
+runPrim ReadContents  = readContents 
+runPrim ReadAll  = readAll 
+runPrim Apply = const $ err $ Panic "Apply: PrimFun should not run in runPrim"

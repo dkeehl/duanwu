@@ -2,14 +2,13 @@ module Duanwu.Eval
 
 import Duanwu.LispVal
 import Duanwu.Prim
-import Effects
-import Effect.Exception
-import Effect.Env
-import Effect.FileIO
+import Control.ST
+import Control.ST.Envir
+import Control.ST.FileIO
 
 public export
-Eval : Type -> Type
-Eval a = Eff (Either LispError a) [ENV LispVal, EXCEPTION Panic, FILE_IO]
+Eval : (Type -> Type) -> Type -> Type
+Eval m a = ST m (Either LispError a) []
 
 -- Make functons
 mkFunc : (varargs : Maybe String) -> (env : EnvRef LispVal) ->
@@ -26,7 +25,8 @@ mkVarArgs : (arg : String) -> (env : EnvRef LispVal) -> (params : List LispVal) 
             (body : List LispVal) -> LispVal
 mkVarArgs = mkFunc . Just 
 
-traverseE: (LispVal -> Eval LispVal) -> List LispVal -> Eval (List LispVal)
+traverseE: (Envir LispVal m, FileIO m) =>
+           (LispVal -> Eval m LispVal) -> List LispVal -> Eval m (List LispVal)
 traverseE f [] = ok []
 traverseE f (x::xs) = do v <- f x
                          vs <- traverseE f xs
@@ -34,7 +34,8 @@ traverseE f (x::xs) = do v <- f x
 
 mutual
   export
-  eval : EnvRef LispVal -> LispVal -> Eval LispVal
+  eval : (Envir LispVal m, FileIO m) =>
+         EnvRef LispVal -> LispVal -> Eval m LispVal
   eval env val@(Str _) = ok val
   eval env val@(Num _) = ok val
   eval env val@(Bool _) = ok val
@@ -94,7 +95,8 @@ mutual
 
   eval env val = err $ Default ("unmatched case " ++ show val)
 
-  apply : LispVal -> List LispVal -> Eval LispVal
+  apply : (Envir LispVal m, FileIO m) =>
+          LispVal -> List LispVal -> Eval m LispVal
   apply (Fun Apply) [fn, List args] = apply fn args
   apply (Fun Apply) (fn::args) = apply fn args
   apply (Fun Apply) _ = err $ Default "apply: expected 2 or more arguments"
@@ -112,9 +114,10 @@ mutual
                   case vararg of
                        Nothing  => []
                        Just arg => [(arg, List remaining)]
-          localEnv : Eff (EnvRef LispVal) [ENV LispVal]
+          localEnv : Envir LispVal m => ST m (EnvRef LispVal) []
           localEnv = local closure $ zip params args ++ optArg
-          evalBody : EnvRef LispVal -> List LispVal -> Eval (List LispVal)
+          evalBody : (Envir LispVal m, FileIO m) =>
+                     EnvRef LispVal -> List LispVal -> Eval m (List LispVal)
           evalBody env = traverseE (eval env)
 
   apply expr _ = err $ NotFunction (show expr)

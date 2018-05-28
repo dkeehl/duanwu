@@ -1,7 +1,7 @@
 module Duanwu.LispVal
 
-import Effects
-import Effect.Env
+import Control.ST
+import Control.ST.Envir
 
 %access public export
 
@@ -48,8 +48,6 @@ data LispVal : Type where
      Lambda : (params : List String) -> (vararg : Maybe String) ->
               (body : List LispVal) -> (closure : EnvRef LispVal) -> LispVal
      Fun : PrimFun -> LispVal
-     -- IOFunc : (fn : List LispVal -> EitherT LispError IO LispVal) ->
-     --         LispVal
      Port : File -> LispVal
 
 data LispError : Type where
@@ -60,6 +58,7 @@ data LispError : Type where
      NotFunction : (fname : String) -> LispError
      UnboundVar : (varname : String) -> LispError
      Default : String -> LispError
+     Panic : String -> LispError
 
 private
 unwordsList : Show a => List a -> String
@@ -82,7 +81,6 @@ Show LispVal where
               Nothing => ""
               Just arg => " . " ++ arg) ++ ") ...)"
   show (Fun _) = "<primitive>"
-  -- show (IOFunc _) = "<IO primitive>"
   show (Port _) = "<IO port>"
 
 export
@@ -96,15 +94,11 @@ Show LispError where
   show (NotFunction fname) = fname ++ " is not a function"
   show (UnboundVar varname) = varname ++ " is not bounded"
   show (Default msg) = msg
+  show (Panic msg) = "Panic!\n" ++ msg
 
-data Panic = Unreachable String
-
-Show Panic where
-  show (Unreachable desc) = "Unreachable case reached: " ++ desc
-
-ok : a -> EffM m (Either LispError a) xs (\v => xs)
+ok : a -> ST m (Either LispError a) []
 ok = pure . Right
 
-err : LispError -> EffM m (Either LispError a) xs (\v => xs) 
+err : LispError -> ST m (Either LispError a) []
 err = pure . Left
 
