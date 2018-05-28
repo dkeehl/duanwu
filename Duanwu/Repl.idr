@@ -1,32 +1,41 @@
 module Duanwu.Repl 
-
 import Duanwu.LispVal
 import Duanwu.Parser
 import Duanwu.Eval
 import Duanwu.Prim
+import Effects
+import Effect.Env
+import Effect.Exception
+import Effect.FileIO
+import Effect.StdIO
 
-parseAndEval : EnvCtx -> String -> Eval LispVal
-parseAndEval env input = liftEither (readExpr input) >>= eval env 
+parseAndEval : EnvRef LispVal -> String ->
+               Eff (Either LispError LispVal) [ENV LispVal, EXCEPTION Panic, FILE_IO]
+parseAndEval env input = do case readExpr input of
+                                 Right val => eval env val
+                                 Left e => err e
 
-evalAndPrint : List String -> IO ()
+evalAndPrint : List String ->
+               Eff () [ENV LispVal, EXCEPTION Panic, FILE_IO, STDIO]
 evalAndPrint [] = pure ()
 evalAndPrint (filename :: args)
-  = do env <- primitiveBindings
+  = do env <- initEnv primitives
        let args' = List $ map Str args 
-       env' <- bindVars env [("args", args')]
+       env' <- local env [("args", args')]
        let expr = List [Atom "load", Str filename]
-       eitherT printLn printLn $ eval env' expr
+       Right val <- eval env' expr | Left e => printLn e
+       printLn val
 
-runRepl : IO ()
-runRepl = do putStrLn "Lisp Repl"
-             env <- primitiveBindings
-             repl env
+interact : Eff () [ENV LispVal, EXCEPTION Panic, FILE_IO, STDIO]
+interact = do putStrLn "Lisp Repl"
+              env <- initEnv primitives
+              repl env
   where
-  repl : EnvCtx -> IO ()
+  repl : EnvRef LispVal -> Eff () [ENV LispVal, EXCEPTION Panic, FILE_IO, STDIO]
   repl env
     = do putStr ">"
-         "quit" <- getLine
-           | input => do Right val <- runEitherT (parseAndEval env input) 
+         "quit" <- getStr
+           | input => do Right val <- parseAndEval env input
                           | Left err => do printLn err; repl env
                          printLn val
                          repl env
@@ -36,7 +45,7 @@ export
 main : IO ()
 main = do args <- getArgs
           case args of
-               [cmd] => runRepl 
-               (cmd :: args) => evalAndPrint args
-               [] => pure () -- impossible
+               [cmd] => run interact
+               (cmd :: args) => run $ evalAndPrint args
+               [] => pure () -- unreachable
 
