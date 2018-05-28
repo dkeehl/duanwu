@@ -167,7 +167,8 @@ primFuns = [("+", Add),
             ("read", Read),
             ("write", Write),
             ("read-contents", ReadContents),
-            ("read-all", ReadAll)]
+            ("read-all", ReadAll),
+            ("apply", Apply)]
 
 export
 primitives : List (String, LispVal)
