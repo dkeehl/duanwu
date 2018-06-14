@@ -3,7 +3,6 @@ module Duanwu.Prim
 import Duanwu.LispVal
 import Duanwu.Parser
 import Effects
-import Effect.Exception
 import Effect.FileIO
 
 Result : Type -> Type
@@ -176,7 +175,7 @@ primitives = map (map Fun) primFuns
 
 export
 runPrim : PrimFun -> List LispVal ->
-          Eff (Either LispError LispVal) [EXCEPTION Panic, FILE_IO]
+          Eff (Either LispError LispVal) [FILE_IO]
 runPrim Car args = pure $ car args  -- point free don't type check, a bug?
 runPrim Cdr args = pure $ cdr args
 runPrim Cons args = pure $ cons args
@@ -207,17 +206,5 @@ runPrim Read args = readProc args
 runPrim Write args = writeProc args
 runPrim ReadContents args = readContents args
 runPrim ReadAll args = readAll args
-runPrim Apply _ = raise $ Unreachable "Apply: PrimFun should not run in runPrim"
+runPrim Apply _ = assert_unreachable
 
-{-
-nullEnv : IO EnvCtx
-nullEnv = newIORef []
-
-export
-primitiveBindings : IO EnvCtx
-primitiveBindings
-  = let mkPrimFunctions = \(var, func) => (var, Function func)
-        mkList LispVal -> IOResult LispVals = \(var, func) => (var, IOFunc func) in
-        nullEnv >>= flip bindVars (map mkPrimFunctions primitives
-                                  ++ map mkList LispVal -> IOResult LispVals ioPrimitives)
--}

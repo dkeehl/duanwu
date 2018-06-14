@@ -97,11 +97,6 @@ Show LispError where
   show (UnboundVar varname) = varname ++ " is not bounded"
   show (Default msg) = msg
 
-data Panic = Unreachable String
-
-Show Panic where
-  show (Unreachable desc) = "Unreachable case reached: " ++ desc
-
 ok : a -> EffM m (Either LispError a) xs (\v => xs)
 ok = pure . Right
 

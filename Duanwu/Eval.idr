@@ -3,13 +3,12 @@ module Duanwu.Eval
 import Duanwu.LispVal
 import Duanwu.Prim
 import Effects
-import Effect.Exception
 import Effect.Env
 import Effect.FileIO
 
 public export
 Eval : Type -> Type
-Eval a = Eff (Either LispError a) [ENV LispVal, EXCEPTION Panic, FILE_IO]
+Eval a = Eff (Either LispError a) [ENV LispVal, FILE_IO]
 
 -- Make functons
 mkFunc : (varargs : Maybe String) -> (env : EnvRef LispVal) ->
