@@ -1,6 +1,6 @@
 module Duanwu.Syntax
 
--- import Duanwu.Lexer
+import Data.IORef
 
 %default total
 
@@ -25,34 +25,49 @@ mutual
 
 data Form = Def Definition | Expr Expression
 
-data Env : Type -> Type where
-  MkEnv : Env a
+data Error = NotDefined | WrongArgNumber
 
-data Eval : Type -> Type where
-  Pure : a -> Eval a
-  Bind : Eval a -> (a -> Eval b) -> Eval b
-  Get : Env a -> String -> Eval a
-  Set : Env a -> String -> a -> Eval a
-  Local : Env a -> List (String, a) -> Eval (Env a)
-  Defined : String -> Eval Bool
+record Eval a where
+  constructor MkEval
+  runEval : IO (Either Error a)
 
+-- Functor
+map : (a -> b) -> Eval a -> Eval b
+map f (MkEval ioe) = MkEval $ map (map f) ioe
+
+-- Applicative
+%inline
 pure : a -> Eval a
-pure = Pure
+pure x = MkEval (pure (pure x))
 
+(<*>) : Eval (a -> b) -> Eval a -> Eval b
+(<*>) (MkEval mmf) (MkEval mma) = MkEval [| mmf <*> mma |]
+
+-- Monad
+%inline
 (>>=) : Eval a -> (a -> Eval b) -> Eval b
-(>>=) = Bind
+(>>=) (MkEval ioe) f
+  = MkEval (ioe >>= \e => case e of
+           Left err  => pure (Left err)
+           Right val => runEval (f val))
 
-get : Env a -> String -> Eval a
-get = Get
+%inline
+liftIO : IO a -> Eval a
+liftIO io = MkEval (map Right io)
+
+fail : Error -> Eval a
+fail = MkEval . pure . Left
+
+data Env : Type -> Type where
+  MkEnv : IORef (List (String, IORef a)) -> Env a
+
+get : Env a -> String -> Eval (Maybe a)
 
 set : Env a -> String -> a -> Eval a
-set = Set
 
 local : Env a -> List (String, a) -> Eval (Env a)
-local = Local
 
-isDefined : String -> Eval Bool
-isDefined = Defined
+isDefined : Env a -> String -> Eval Bool
 
 mutual
   data Continuation : Type where
@@ -70,8 +85,6 @@ mutual
     Closure : Expression -> Env Value -> Value
     Cont : Continuation -> Value
 
-runEval : Eval a -> IO a
-
 mkFunc : Env Value -> List String -> Body -> Value
 mkFunc env args body = Closure (Lambda args body) env
 
@@ -87,13 +100,18 @@ mutual
   evalExpr : Expression -> Env Value -> Continuation -> Eval Value
   evalExpr (ConstI i) env c = runCont c (I i)
   evalExpr (ConstB b) env c = runCont c (B b)
-  evalExpr (Var name) env c = do val <- get env name
+  evalExpr (Var name) env c = do Just val <- get env name
+                                 | Nothing => fail NotDefined
                                  runCont c val
   evalExpr (Quote e) env c = runCont c (E e)
   evalExpr (Lambda args body) env c = runCont c $ mkFunc env args body
   evalExpr (If pred conseq alt) env c = let cont = Branch conseq alt env c in
                                             evalExpr pred env cont
-  evalExpr (MutSet name e) env c = ?hole0
+  evalExpr (MutSet name e) env c = do True <- isDefined env name
+                                      | False => fail NotDefined
+                                      val <- evalExpr e env Return
+                                      set env name val
+                                      runCont c val
   evalExpr (Apply f args) env c = let cont = EvalArgs args [] env c in
                                       evalExpr f env cont
   evalExpr (CallCC name (MkBody defs expr es)) env c
@@ -118,7 +136,7 @@ mutual
     = case es of
            []    => apply x (reverse xs) c
            a::as => let cont = EvalArgs as (x::xs) env c in
-                        evalExpr a env c
+                        evalExpr a env cont
   runCont (Seq es env c) x
     = case es of
            []     => runCont c x
@@ -130,6 +148,5 @@ mutual
          evalBody defs expr es localEnv next
   apply (Closure _ _) _ _ = assert_unreachable
   apply (Cont c) [x] _ = runCont c x
-  apply (Cont _) _ _ = ?hole1
+  apply (Cont _) _ _ = fail WrongArgNumber
   apply f args c = ?hole3
-
