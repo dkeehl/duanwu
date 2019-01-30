@@ -63,22 +63,19 @@ data Env : Type -> Type where
 
 get : Env a -> String -> Eval (Maybe a)
 
-set : Env a -> String -> a -> Eval a
+put : Env a -> String -> a -> Eval a
 
 local : Env a -> List (String, a) -> Eval (Env a)
-
-isDefined : Env a -> String -> Eval Bool
 
 mutual
   data Continuation : Type where
     Return : Continuation
     Branch : Expression -> Expression -> Env Value -> Continuation -> Continuation
-    EvalArgs : (todo: List Expression) ->
-               (done: List Value) ->
-               Env Value -> Continuation -> Continuation
+    EvalArgs : List Expression -> Env Value -> Continuation -> Continuation
     Seq : List Expression -> Env Value -> Continuation -> Continuation
 
   data Value : Type where
+    Void : Value
     E : Expression -> Value
     I : Integer -> Value
     B : Bool -> Value
@@ -92,9 +89,9 @@ mkFunc env args body = Closure (Lambda args body) env
 mutual
   evalDef : Definition -> Env Value -> Eval Value
   evalDef (DefVar name expr) env = do val <- evalExpr expr env Return
-                                      set env name val
+                                      put env name val
   evalDef (DefFun name args body) env = do let fn = mkFunc env args body
-                                           set env name fn
+                                           put env name fn
                                            pure fn
 
   evalExpr : Expression -> Env Value -> Continuation -> Eval Value
@@ -107,12 +104,10 @@ mutual
   evalExpr (Lambda args body) env c = runCont c $ mkFunc env args body
   evalExpr (If pred conseq alt) env c = let cont = Branch conseq alt env c in
                                             evalExpr pred env cont
-  evalExpr (MutSet name e) env c = do True <- isDefined env name
-                                      | False => fail NotDefined
-                                      val <- evalExpr e env Return
-                                      set env name val
-                                      runCont c val
-  evalExpr (Apply f args) env c = let cont = EvalArgs args [] env c in
+  evalExpr (MutSet name e) env c = do val <- evalExpr e env Return
+                                      put env name val
+                                      runCont c Void
+  evalExpr (Apply f args) env c = let cont = EvalArgs args env c in
                                       evalExpr f env cont
   evalExpr (CallCC name (MkBody defs expr es)) env c
     = do let cc = Cont c
@@ -132,11 +127,14 @@ mutual
     = case x of
            B False => evalExpr alt env next
            _       => evalExpr conseq env next
-  runCont (EvalArgs es xs env c) x
-    = case es of
-           []    => apply x (reverse xs) c
-           a::as => let cont = EvalArgs as (x::xs) env c in
-                        evalExpr a env cont
+  runCont (EvalArgs es env c) f = evalArgs es env (\xs => apply f xs c)
+    where
+      evalArgs : List Expression -> Env Value ->
+                 (k: List Value -> Eval Value) -> Eval Value
+      evalArgs []      env k = k []
+      evalArgs (e::es) env k = do x <- evalExpr e env Return
+                                  let k' = \xs => k (x::xs)
+                                  evalArgs es env k'
   runCont (Seq es env c) x
     = case es of
            []     => runCont c x
